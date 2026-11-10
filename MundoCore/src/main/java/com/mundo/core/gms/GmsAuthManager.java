@@ -20,7 +20,6 @@ public class GmsAuthManager {
 
     // Google's GMS package details expected by the auth endpoint
     private static final String GMS_PKG  = "com.google.android.gms";
-    private static final String GMS_SIG  = "38918a453d07199354f8b19af05ec6562ced5788";
     private static final int    GMS_VER  = 252432;
 
     private final Context ctx;
@@ -32,7 +31,10 @@ public class GmsAuthManager {
         this.ctx       = ctx.getApplicationContext();
         this.email     = email;
         this.callerPkg = callerPkg != null ? callerPkg : GMS_PKG;
-        this.callerSig = callerSig != null ? callerSig : GMS_SIG;
+        // Always use the REAL SHA1 of the guest app's signing cert.
+        // Google validates this server-side — wrong sig = token rejected.
+        this.callerSig = callerSig != null ? callerSig
+                : GmsSignatureHelper.getCallerCertSha1(this.callerPkg);
     }
 
     /**

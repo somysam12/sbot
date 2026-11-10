@@ -16,6 +16,7 @@ import android.webkit.WebViewClient;
 
 import com.mundo.core.gms.GmsAuthManager;
 import com.mundo.core.gms.GmsCheckin;
+import com.mundo.core.gms.GmsSignatureHelper;
 import com.mundo.core.gms.GmsTokenStore;
 import com.mundo.utils.Slog;
 
