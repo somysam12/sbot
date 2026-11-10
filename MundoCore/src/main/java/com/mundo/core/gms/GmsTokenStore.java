@@ -26,6 +26,7 @@ public class GmsTokenStore {
     private static final String KEY_EXPIRY_PREFIX    = "exp_";   // exp_<email>_<service>
     private static final String KEY_ID_TOKEN_PREFIX  = "idt_";   // idt_<email>
     private static final String KEY_ACCT_ID_PREFIX   = "aid_";   // aid_<email>
+    private static final String KEY_USERDATA_PREFIX  = "ud_";    // ud_<email>_<key> (generic per-account metadata)
 
     // ---- accounts -----------------------------------------------------------
 
@@ -105,6 +106,24 @@ public class GmsTokenStore {
 
     public static String getAccountId(Context ctx, String email) {
         return prefs(ctx).getString(KEY_ACCT_ID_PREFIX + email, null);
+    }
+
+    // ---- generic per-account user-data (used by AuthManager) ----------------
+
+    public static String getUserData(Context ctx, String email, String key) {
+        if (email == null || key == null) return null;
+        return prefs(ctx).getString(KEY_USERDATA_PREFIX + email + "_" + key, null);
+    }
+
+    public static void setUserData(Context ctx, String email, String key, String value) {
+        if (email == null || key == null) return;
+        SharedPreferences.Editor ed = prefs(ctx).edit();
+        if (value == null) {
+            ed.remove(KEY_USERDATA_PREFIX + email + "_" + key);
+        } else {
+            ed.putString(KEY_USERDATA_PREFIX + email + "_" + key, value);
+        }
+        ed.apply();
     }
 
     // ---- first (default) account --------------------------------------------

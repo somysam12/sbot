@@ -14,13 +14,13 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
-import com.mundo.core.gms.GmsAuthManager;
+import com.mundo.core.gms.AuthManager;
+import com.mundo.core.gms.AuthRequest;
+import com.mundo.core.gms.AuthResponse;
 import com.mundo.core.gms.GmsCheckin;
 import com.mundo.core.gms.GmsSignatureHelper;
 import com.mundo.core.gms.GmsTokenStore;
 import com.mundo.utils.Slog;
-
-import java.util.Map;
 
 /**
  * WebView activity for Google account login.
@@ -123,9 +123,7 @@ public class GoogleLoginActivity extends Activity {
                 // First do check-in if we don't have an androidId yet
                 GmsCheckin.checkin(ctx, false);
 
-                // Exchange oauth_token for a master (ac2dm) token
-                GmsAuthManager mgr = new GmsAuthManager(ctx, "__auth__", null, null);
-                // The oauth_token from the cookie IS the EncryptedPasswd for first exchange
+                // Exchange oauth_token for a master (ac2dm) token using AuthRequest (microG approach)
                 String masterToken = exchangeForMasterToken(ctx, oauthToken);
                 if (masterToken == null) {
                     Slog.w(TAG, "master token exchange failed");
@@ -144,9 +142,12 @@ public class GoogleLoginActivity extends Activity {
                 // Store account
                 GmsTokenStore.addAccount(ctx, email, masterToken, email);
 
-                // Pre-fetch openid token to warm the cache
-                GmsAuthManager idMgr = new GmsAuthManager(ctx, email, null, null);
-                idMgr.requestToken("oauth2:profile email openid");
+                // Pre-fetch openid token to warm the cache using AuthManager (microG approach)
+                try {
+                    AuthManager idMgr = new AuthManager(ctx, email,
+                            AuthRequest.GMS_PACKAGE_NAME, "oauth2:profile email openid");
+                    idMgr.requestAuth(false);
+                } catch (Exception ignored) {}
 
                 Slog.d(TAG, "Google login success: " + email);
                 runOnUiThread(() -> {
@@ -162,56 +163,44 @@ public class GoogleLoginActivity extends Activity {
         }, "GmsLogin").start();
     }
 
+    // Exchange oauth_token cookie for a master (ac2dm) token — uses AuthRequest (microG approach)
     private String exchangeForMasterToken(Context ctx, String oauthToken) {
         try {
-            java.util.Map<String, String> params = new java.util.HashMap<>();
-            long androidId = GmsCheckin.getAndroidId(ctx);
-            params.put("accountType",    "HOSTED_OR_GOOGLE");
-            params.put("Email",          "");
-            params.put("has_permission", "1");
-            params.put("EncryptedPasswd", oauthToken);
-            params.put("service",        "ac2dm");
-            params.put("source",         "android");
-            params.put("androidId",      androidId != 0 ? Long.toHexString(androidId) : "0");
-            params.put("app",            "com.google.android.gms");
-            params.put("client_sig",     "38918a453d07199354f8b19af05ec6562ced5788");
-            params.put("device_country", "us");
-            params.put("operatorCountry","us");
-            params.put("lang",           "en");
-            params.put("sdk_version",    String.valueOf(android.os.Build.VERSION.SDK_INT));
-
-            Map<String, String> resp =
-                    com.mundo.core.gms.GmsAuthHttpClient.postAuth(params);
-            if (resp.containsKey("Token")) return resp.get("Token");
-            if (resp.containsKey("Auth"))  return resp.get("Auth");
-            Slog.w(TAG, "ac2dm exchange returned: " + resp);
+            AuthResponse resp = new AuthRequest()
+                    .fromContext(ctx)
+                    .source("android")
+                    .accountType("HOSTED_OR_GOOGLE")
+                    .app(AuthRequest.GMS_PACKAGE_NAME, GmsSignatureHelper.GMS_CERT_SHA1)
+                    .caller(AuthRequest.GMS_PACKAGE_NAME, GmsSignatureHelper.GMS_CERT_SHA1)
+                    .email("")
+                    .token(oauthToken)
+                    .service("ac2dm")
+                    .hasPermission(true)
+                    .getResponse();
+            if (resp.token != null) return resp.token;
+            if (resp.auth  != null) return resp.auth;
+            Slog.w(TAG, "ac2dm exchange returned no token: " + resp);
         } catch (Exception e) {
             Slog.w(TAG, "exchangeForMasterToken: " + e.getMessage());
         }
         return null;
     }
 
+    // Resolve email address from master token — uses AuthRequest (microG approach)
     private String resolveEmail(Context ctx, String masterToken) {
         try {
-            java.util.Map<String, String> params = new java.util.HashMap<>();
-            long androidId = GmsCheckin.getAndroidId(ctx);
-            params.put("accountType",    "HOSTED_OR_GOOGLE");
-            params.put("Email",          "");
-            params.put("has_permission", "1");
-            params.put("EncryptedPasswd", masterToken);
-            params.put("service",        "oauth2:https://www.googleapis.com/auth/userinfo.email");
-            params.put("source",         "android");
-            params.put("androidId",      androidId != 0 ? Long.toHexString(androidId) : "0");
-            params.put("app",            "com.google.android.gms");
-            params.put("client_sig",     "38918a453d07199354f8b19af05ec6562ced5788");
-            params.put("device_country", "us");
-            params.put("operatorCountry","us");
-            params.put("lang",           "en");
-            params.put("sdk_version",    String.valueOf(android.os.Build.VERSION.SDK_INT));
-
-            Map<String, String> resp =
-                    com.mundo.core.gms.GmsAuthHttpClient.postAuth(params);
-            return resp.get("Email");
+            AuthResponse resp = new AuthRequest()
+                    .fromContext(ctx)
+                    .source("android")
+                    .accountType("HOSTED_OR_GOOGLE")
+                    .app(AuthRequest.GMS_PACKAGE_NAME, GmsSignatureHelper.GMS_CERT_SHA1)
+                    .caller(AuthRequest.GMS_PACKAGE_NAME, GmsSignatureHelper.GMS_CERT_SHA1)
+                    .email("")
+                    .token(masterToken)
+                    .service("oauth2:https://www.googleapis.com/auth/userinfo.email")
+                    .hasPermission(true)
+                    .getResponse();
+            return resp.email;
         } catch (Exception e) {
             Slog.w(TAG, "resolveEmail: " + e.getMessage());
         }

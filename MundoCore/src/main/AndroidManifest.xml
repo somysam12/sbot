@@ -293,12 +293,21 @@
             android:name="com.mundo.proxy.ProxyWebActivity"
             android:exported="false" />
 
-        <!-- Google Login: embedded WebView sign-in activity (microG-style) -->
+        <!-- Google Login: embedded WebView sign-in activity (microG LoginActivity approach) -->
         <activity
             android:name="com.mundo.proxy.gms.GoogleLoginActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
+        <!-- Google OAuth consent WebView (microG ConsentSignInActivity approach) -->
+        <activity
+            android:name="com.mundo.proxy.gms.ConsentSignInActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
 

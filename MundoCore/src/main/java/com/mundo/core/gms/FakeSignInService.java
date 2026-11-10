@@ -1,6 +1,5 @@
 package com.mundo.core.gms;
 
-import android.accounts.Account;
 import android.content.Context;
 import android.os.Binder;
 import android.os.IBinder;
@@ -112,10 +111,16 @@ public class FakeSignInService extends Binder {
     }
 
     private GoogleSignInAccount buildSignInAccount(String email) {
-        // Fetch a fresh id-token (openid scope) + profile scopes
+        // Fetch a fresh id-token (openid scope) + profile scopes using AuthManager (microG approach)
         String service = "oauth2:profile email openid";
-        GmsAuthManager mgr = new GmsAuthManager(ctx, email, callerPkg, null);
-        String accessToken = mgr.requestToken(service);
+        String accessToken = null;
+        try {
+            AuthManager mgr = new AuthManager(ctx, email, callerPkg, service);
+            AuthResponse authResp = mgr.requestAuth(false);
+            accessToken = authResp != null ? authResp.auth : null;
+        } catch (Exception e) {
+            Log.w(TAG, "buildSignInAccount: auth error: " + e.getMessage());
+        }
         if (accessToken == null) {
             Log.w(TAG, "buildSignInAccount: could not get access token for " + email);
             // Try to still return an account with just cached id-token
