@@ -1,0 +1,49 @@
+<!--
+    PATCH FILE — AndroidManifest.patch.xml
+
+    Apply this change to: MundoCore/src/main/AndroidManifest.xml
+
+    WHY: GmsHookInstaller.ensureInitialized() is called lazily from bindService hooks.
+    However, as a belt-and-suspenders guarantee that the GMS interceptor is set up
+    BEFORE the virtual app even calls bindService, register GmsChildProcessProvider
+    as a ContentProvider with android:multiprocess="true".
+
+    Android instantiates ContentProviders at process startup. With multiprocess="true",
+    a fresh instance is created in each process that accesses it.
+
+    BlackBox queries host-package ContentProviders during virtual process startup, so
+    this ContentProvider's onCreate() runs early in the virtual process — before any
+    bindService call from the cloned app.
+
+    OPTIONAL (the lazy-init in GmsHookInstaller alone is sufficient).
+    Add this inside the <application> tag:
+-->
+
+<application>
+    <!-- ... existing providers ... -->
+
+    <!--
+        GmsChildProcessProvider: early GMS hook init in BlackBox virtual processes.
+        Authority must be unique — replace com.yourapp with the host app's package name.
+        In a library AAR use a placeholder: ${applicationId}.mundogms
+    -->
+    <provider
+        android:name="com.mundo.proxy.gms.GmsChildProcessProvider"
+        android:authorities="${applicationId}.mundogms"
+        android:exported="false"
+        android:multiprocess="true"
+        android:initOrder="100" />
+
+</application>
+
+<!--
+    NOTE on android:process:
+    Do NOT add android:process here — leaving it unset means Android can instantiate
+    this provider in ANY process of the host package, which is exactly what we want.
+    With android:multiprocess="true" and no process name, Android creates a fresh
+    instance of this ContentProvider in each process that accesses it, including
+    BlackBox's virtual processes (com.bgmi:p0, com.bgmi:p1, etc.).
+
+    BlackBox's stub providers already trigger content provider resolution during
+    virtual app process startup, so this provider's onCreate() fires early.
+-->
