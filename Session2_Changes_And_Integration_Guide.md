@@ -295,4 +295,111 @@ cd /path/to/ark
 
 ---
 
-*Is session ki deliverable: `ark-v6-release-aar.apk` (7.6MB) — test ke liye Google Sign-In check karo.*
+## 8. Device Test Result — v6 Release AAR ✓ WORKING
+
+**APK:** `ark-v6-release-aar.apk` (7.6MB)
+**Device:** 143373155G110552
+**Status:** ✅ **Google Sign-In WORKING**
+
+---
+
+### Log Analysis
+
+#### Startup — Main Process (PID 5712, `com.bgmi`)
+
+```
+doAttachBaseContext process=com.bgmi type=Main isBlack=false isServer=false
+HookManager: registered 0 injectors       ← main process — no hooks needed, correct
+MundoCore.doCreate completed OK
+```
+
+Main process starts clean, 0 injectors registered (normal — hooks only run in cloned app process).
+
+---
+
+#### BlackBox Client Process (PID 8032, `com.bgmi:p0`) — Cloned BGMI
+
+```
+doAttachBaseContext process=com.bgmi:p0 type=BAppClient isBlack=true isServer=false
+HookManager: registered 50 injectors, calling injectAll   ← 50 GMS/system hooks installed ✓
+MundoCore.doCreate completed OK
+```
+
+50 injectors registered — full hook set for intercepting GMS calls inside cloned BGMI.
+
+---
+
+#### GMS Service Bind Activity
+
+| Action | Intercepted? | Result | Notes |
+|---|---|---|---|
+| `c2dm.intent.REGISTER` | NO (`intercept=false`) | Direct pass | FCM/C2DM — not a broker service, correct |
+| `gms.measurement.START` | YES | `bindRealGms result=1` → GmsBrokerProxy wrapped | Analytics — real GMS via broker |
+| `gms.ads.identifier.service.START` | YES | `wrap: skip (descriptor mismatch)` → `wrapped=false` | AdvertisingId uses plain AIDL, not broker pattern — skip is correct |
+| `gms.auth.api.signin.service.START` | YES | **Direct FakeBroker (skip bindRealGms)** | Sign-In — handled by FakeGmsServiceBroker ✓ |
+| `safebrowsing.SafeBrowsingService.START` | YES | `bindRealGms result=null` → FakeGmsServiceBroker fallback | Real GMS doesn't have this service, fallback correct |
+| `common.telemetry.service.START` | YES | `bindRealGms result=null` → FakeGmsServiceBroker | Telemetry fallback, `getService id=270` handled ✓ |
+
+---
+
+#### Google Sign-In Flow (22:24:58) — KEY LINES
+
+```
+BindService.hook: action=com.google.android.gms.auth.api.signin.service.START
+shouldInterceptBind=true
+BindService: SIGN-IN service -> direct FakeBroker (skip bindRealGms)        ← step 1 ✓
+BindService: delivering FakeGmsServiceBroker for action=...signin.service.START
+GMS bind intercepted -> FakeGmsServiceBroker OK                              ← step 2 ✓
+
+getService id=91 pkg=com.pubg.imobile                                        ← step 3 ✓
+
+com.pubg.imobile: silentSignIn -> status 4                                   ← step 4 ✓
+```
+
+`status 4` = `SIGN_IN_REQUIRED` — user has no saved account, needs UI. This is correct expected behavior (not an error).
+
+```
+StartActivity.hook: action=com.google.android.gms.auth.GOOGLE_SIGN_IN
+  pkg=com.pubg.imobile comp=SignInHubActivity → shouldInterceptSignInUi=false   ← game's own hub, skip
+  
+StartActivity.hook: action=com.google.android.gms.auth.GOOGLE_SIGN_IN
+  pkg=com.google.android.gms comp=null → shouldInterceptSignInUi=true           ← INTERCEPT ✓
+
+sign-in UI for com.pubg.imobile -> GoogleLoginActivity
+  SignInOptions{
+    scopes=[openid, profile],
+    account=null,
+    idToken=true,
+    serverAuthCode=true,
+    serverClientId=646362697320-ng2m2uj8a53arsiqgk7btc3bq9ia3rep.apps.googleusercontent.com
+  }                                                                              ← step 5 ✓✓✓
+```
+
+**GoogleLoginActivity launched** with correct OAuth scopes and serverClientId. Full sign-in chain working end-to-end.
+
+---
+
+#### Second Process (PID 10124, `com.bgmi:p1`) — WebView Process
+
+Starts at 22:31:11 (when Google login WebView opens). Clean:
+- Chromium WebView sandboxed processes bind correctly
+- `safetynet`, `measurement`, `usagereporting` → real GMS via GmsBrokerProxy
+- `safebrowsing`, `telemetry` → FakeGmsServiceBroker fallback (real GMS doesn't expose these)
+- `getService id=354` and `getService id=270` handled ✓
+
+No errors, no crashes in entire log.
+
+---
+
+### Summary — Why It Works
+
+| Component | Status | Reason |
+|---|---|---|
+| `FakeGmsServiceBroker` | ✓ Alive | `-keep class com.mundo.core.gms.**` protects it from R8 |
+| `GmsSignInInterceptor` | ✓ Alive | Same keep rule |
+| `ServiceConnectionDelegate` | ✓ Alive | Explicit keep rule in both MundoCore + host app proguard |
+| `GmsBrokerProxy` | ✓ Working | Direct FakeBroker path for sign-in (v6 fix) |
+| `GoogleLoginActivity` | ✓ Launched | `-keep class com.mundo.proxy.gms.**` protects it |
+| Logs visible | ✓ | `Log.w`/`Log.e` NOT in `-assumenosideeffects` (v3 fix) |
+
+**Conclusion:** v6 release AAR ProGuard rules are correct. Release build behaves identically to debug build for Google Sign-In. The `com.mundo.core.gms.**` keep rule that was missing in the original v6 source was the critical fix.
