@@ -2369,6 +2369,389 @@ R8 runs on the AAR classes (because `minifyEnabled true`). The GMS intercept cha
 
 ---
 
+### Host App `proguard-rules.pro` — Complete Change History (v3 → v6)
+
+**File location:** `arkC/ark/app/proguard-rules.pro`
+
+This section shows the **complete full file** at each stage, so you can see exactly what existed and what was added. v7 (mundoproxy) changes are NOT included here.
+
+---
+
+#### Stage 1 — Original (before any diag fixes, pre-v3)
+
+This was the state of the file when the first diag builds were attempted. The critical bug: `Log.w` and `Log.e` were inside `-assumenosideeffects`, which silently deleted ALL our diagnostic log calls at R8 compile time.
+
+```proguard
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ArkCheat — ProGuard / R8 Maximum Protection Rules
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── R8 Full Mode: aggressive inlining, class merging ─────────────────────────
+-allowaccessmodification
+-mergeinterfacesaggressively
+-overloadaggressively
+-repackageclasses 'a'
+-optimizationpasses 7
+
+# ── Strip ALL debug metadata ──────────────────────────────────────────────────
+-renamesourcefileattribute ''
+-keepattributes Exceptions,Signature,InnerClasses
+
+# ── BUG: This block stripped Log.w AND Log.e — killing all diagnostic output ──
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static int w(...);              ← KILLS Log.w("MundoGms", ...)
+    public static int e(...);              ← KILLS Log.e(...)
+    public static boolean wtf(...);        ← KILLS Log.wtf(...)
+    public static boolean isLoggable(...); ← KILLS Log.isLoggable(...)
+}
+-assumenosideeffects class java.io.PrintStream { public void println(...); public void print(...); }
+
+# ── Keep JNI native methods ───────────────────────────────────────────────────
+-keepclasseswithmembernames,includedescriptorclasses class * {
+    native <methods>;
+}
+
+# ── App entry points ──────────────────────────────────────────────────────────
+-keep class com.bgmi.ArkApplication { *; }
+-keep class com.bgmi.DexDecryptor   { *; }
+-keep class com.bgmi.SplashActivity { *; }
+-keep class com.bgmi.LoginActivity  { *; }
+-keep class com.bgmi.MainActivity   { *; }
+-keep class com.bgmi.BaseActivity   { *; }
+-keep class com.bgmi.OverlayService { *; }
+-keep class com.bgmi.utils.**       { *; }
+
+# ── Virtual space SDK ─────────────────────────────────────────────────────────
+-keep class net_62v.**           { *; }
+-keep class black.**             { *; }
+-dontwarn net_62v.**
+-dontwarn black.**
+
+# ── Reflection helpers ────────────────────────────────────────────────────────
+-keep class me.weishu.**             { *; }
+-keep class com.github.CodingGay.** { *; }
+-dontwarn me.weishu.**
+
+# ── LSParanoid ────────────────────────────────────────────────────────────────
+-keep @io.michaelrocks.paranoid.Obfuscate class * { *; }
+-keep class io.michaelrocks.paranoid.**            { *; }
+
+# ── AndroidX / Material ───────────────────────────────────────────────────────
+-keep class androidx.core.content.res.ResourcesCompat { *; }
+-keep class com.google.android.material.bottomsheet.BottomSheetDialog { *; }
+
+# ── Zip4j ─────────────────────────────────────────────────────────────────────
+-keep class net.lingala.zip4j.** { *; }
+-dontwarn net.lingala.zip4j.**
+
+# ── Standard safety keeps ─────────────────────────────────────────────────────
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+-keepclassmembers class * implements android.os.Parcelable {
+    public static final android.os.Parcelable$Creator *;
+}
+-keepclassmembers class * implements java.io.Serializable {
+    static final long serialVersionUID;
+    private void writeObject(java.io.ObjectOutputStream);
+    private void readObject(java.io.ObjectInputStream);
+}
+
+-dontwarn org.bouncycastle.**
+-dontwarn org.conscrypt.**
+-dontwarn javax.annotation.**
+-dontwarn sun.misc.**
+-ignorewarnings
+
+# ── Custom obfuscation dictionary ─────────────────────────────────────────────
+-obfuscationdictionary       obfuscation-dict.txt
+-classobfuscationdictionary  obfuscation-dict.txt
+-packageobfuscationdictionary obfuscation-dict.txt
+
+# ════════════════════════════════════════════════════════════════════════
+#  Mundo Lvl10 — Full keeps
+# ════════════════════════════════════════════════════════════════════════
+-keep class net_62v.**                          { *; }
+-keep class top.bienvenido.**                   { *; }
+-keep class * implements net_62v.external.IMundoProcessCallback { *; }
+-keepclassmembers class * implements net_62v.external.IMundoProcessCallback { *; }
+-dontwarn top.bienvenido.**
+
+# ArkCheat specific
+-keep class com.bgmi.HeartbeatManager       { *; }
+-keep class com.bgmi.OverlayService         { *; }
+-keepclassmembers class com.bgmi.HeartbeatManager {
+    static native <methods>;
+    public static <methods>;
+}
+```
+
+**Problem:** `Log.w`, `Log.e`, `Log.wtf`, `Log.isLoggable` were all in `-assumenosideeffects`. R8 silently deleted every single log call at compile time. Installing diag2 on device showed **zero MundoGms log lines** even though the code was running.
+
+---
+
+#### Stage 2 — After v3 Fix (`ark-gms-diag3.apk`)
+
+**What changed:** Removed `Log.w`, `Log.e`, `Log.wtf`, `Log.isLoggable` from the `-assumenosideeffects` block. Everything else identical to Stage 1.
+
+**Diff — the only change:**
+```diff
+ -assumenosideeffects class android.util.Log {
+     public static int v(...);
+     public static int d(...);
+     public static int i(...);
+-    public static int w(...);
+-    public static int e(...);
+-    public static boolean wtf(...);
+-    public static boolean isLoggable(...);
+ }
+```
+
+**Complete file after v3 fix:**
+```proguard
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ArkCheat — ProGuard / R8 Maximum Protection Rules
+# ═══════════════════════════════════════════════════════════════════════════════
+
+-allowaccessmodification
+-mergeinterfacesaggressively
+-overloadaggressively
+-repackageclasses 'a'
+-optimizationpasses 7
+
+-renamesourcefileattribute ''
+-keepattributes Exceptions,Signature,InnerClasses
+
+# FIXED: Log.w and Log.e now survive R8 — diagnostic logs appear on device
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    # Log.w, Log.e, Log.wtf, isLoggable removed — they now survive compilation
+}
+-assumenosideeffects class java.io.PrintStream { public void println(...); public void print(...); }
+
+-keepclasseswithmembernames,includedescriptorclasses class * {
+    native <methods>;
+}
+
+-keep class com.bgmi.ArkApplication { *; }
+-keep class com.bgmi.DexDecryptor   { *; }
+-keep class com.bgmi.SplashActivity { *; }
+-keep class com.bgmi.LoginActivity  { *; }
+-keep class com.bgmi.MainActivity   { *; }
+-keep class com.bgmi.BaseActivity   { *; }
+-keep class com.bgmi.OverlayService { *; }
+-keep class com.bgmi.utils.**       { *; }
+
+-keep class net_62v.**           { *; }
+-keep class black.**             { *; }
+-dontwarn net_62v.**
+-dontwarn black.**
+
+-keep class me.weishu.**             { *; }
+-keep class com.github.CodingGay.** { *; }
+-dontwarn me.weishu.**
+
+-keep @io.michaelrocks.paranoid.Obfuscate class * { *; }
+-keep class io.michaelrocks.paranoid.**            { *; }
+
+-keep class androidx.core.content.res.ResourcesCompat { *; }
+-keep class com.google.android.material.bottomsheet.BottomSheetDialog { *; }
+
+-keep class net.lingala.zip4j.** { *; }
+-dontwarn net.lingala.zip4j.**
+
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+-keepclassmembers class * implements android.os.Parcelable {
+    public static final android.os.Parcelable$Creator *;
+}
+-keepclassmembers class * implements java.io.Serializable {
+    static final long serialVersionUID;
+    private void writeObject(java.io.ObjectOutputStream);
+    private void readObject(java.io.ObjectInputStream);
+}
+
+-dontwarn org.bouncycastle.**
+-dontwarn org.conscrypt.**
+-dontwarn javax.annotation.**
+-dontwarn sun.misc.**
+-ignorewarnings
+
+-obfuscationdictionary       obfuscation-dict.txt
+-classobfuscationdictionary  obfuscation-dict.txt
+-packageobfuscationdictionary obfuscation-dict.txt
+
+-keep class net_62v.**                          { *; }
+-keep class top.bienvenido.**                   { *; }
+-keep class * implements net_62v.external.IMundoProcessCallback { *; }
+-keepclassmembers class * implements net_62v.external.IMundoProcessCallback { *; }
+-dontwarn top.bienvenido.**
+
+-keep class com.bgmi.HeartbeatManager       { *; }
+-keep class com.bgmi.OverlayService         { *; }
+-keepclassmembers class com.bgmi.HeartbeatManager {
+    static native <methods>;
+    public static <methods>;
+}
+```
+
+**Result:** Logs appeared on device for the first time. v4 and v5 were built with this same proguard state — no further proguard changes in those builds.
+
+---
+
+#### Stage 3 — After v6 Fix (`ark-gms-diag6.apk`) ✓ FINAL / WORKING
+
+**What changed:** Added 4 new lines at the end — keep rules for all GMS intercept classes.
+
+**Diff — the only change vs Stage 2:**
+```diff
+ -keep class com.bgmi.HeartbeatManager       { *; }
+ -keep class com.bgmi.OverlayService         { *; }
+ -keepclassmembers class com.bgmi.HeartbeatManager {
+     static native <methods>;
+     public static <methods>;
+ }
++
++# GMS intercept classes — Binder subclasses called reflectively by framework
++-keep class com.mundo.core.gms.**           { *; }
++-keep class com.mundo.proxy.gms.**          { *; }
++-keep class com.mundo.fake.delegate.ServiceConnectionDelegate { *; }
++-dontwarn com.mundo.**
+```
+
+**Complete file after v6 fix (this is the v6 final state — no v7 mundoproxy):**
+```proguard
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ArkCheat — ProGuard / R8 Maximum Protection Rules
+# ═══════════════════════════════════════════════════════════════════════════════
+
+-allowaccessmodification
+-mergeinterfacesaggressively
+-overloadaggressively
+-repackageclasses 'a'
+-optimizationpasses 7
+
+-renamesourcefileattribute ''
+-keepattributes Exceptions,Signature,InnerClasses
+
+# Remove most logging (keep w/e for diagnostics) — fixed in v3
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}
+-assumenosideeffects class java.io.PrintStream { public void println(...); public void print(...); }
+
+-keepclasseswithmembernames,includedescriptorclasses class * {
+    native <methods>;
+}
+
+-keep class com.bgmi.ArkApplication { *; }
+-keep class com.bgmi.DexDecryptor   { *; }
+-keep class com.bgmi.SplashActivity { *; }
+-keep class com.bgmi.LoginActivity  { *; }
+-keep class com.bgmi.MainActivity   { *; }
+-keep class com.bgmi.BaseActivity   { *; }
+-keep class com.bgmi.OverlayService { *; }
+-keep class com.bgmi.utils.**       { *; }
+
+-keep class net_62v.**           { *; }
+-keep class black.**             { *; }
+-dontwarn net_62v.**
+-dontwarn black.**
+
+-keep class me.weishu.**             { *; }
+-keep class com.github.CodingGay.** { *; }
+-dontwarn me.weishu.**
+
+-keep @io.michaelrocks.paranoid.Obfuscate class * { *; }
+-keep class io.michaelrocks.paranoid.**            { *; }
+
+-keep class androidx.core.content.res.ResourcesCompat { *; }
+-keep class com.google.android.material.bottomsheet.BottomSheetDialog { *; }
+
+-keep class net.lingala.zip4j.** { *; }
+-dontwarn net.lingala.zip4j.**
+
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+-keepclassmembers class * implements android.os.Parcelable {
+    public static final android.os.Parcelable$Creator *;
+}
+-keepclassmembers class * implements java.io.Serializable {
+    static final long serialVersionUID;
+    private void writeObject(java.io.ObjectOutputStream);
+    private void readObject(java.io.ObjectInputStream);
+}
+
+-dontwarn org.bouncycastle.**
+-dontwarn org.conscrypt.**
+-dontwarn javax.annotation.**
+-dontwarn sun.misc.**
+-ignorewarnings
+
+-obfuscationdictionary       obfuscation-dict.txt
+-classobfuscationdictionary  obfuscation-dict.txt
+-packageobfuscationdictionary obfuscation-dict.txt
+
+# ════════════════════════════════════════════════════════════════════════
+#  Mundo Lvl10 — Full keeps (REQUIRED — do not remove)
+# ════════════════════════════════════════════════════════════════════════
+-keep class net_62v.**                          { *; }
+-keep class top.bienvenido.**                   { *; }
+-keep class * implements net_62v.external.IMundoProcessCallback { *; }
+-keepclassmembers class * implements net_62v.external.IMundoProcessCallback { *; }
+-dontwarn top.bienvenido.**
+
+# GMS intercept classes — added in v6 to prevent R8 stripping Binder subclasses
+-keep class com.mundo.core.gms.**           { *; }
+-keep class com.mundo.proxy.gms.**          { *; }
+-keep class com.mundo.fake.delegate.ServiceConnectionDelegate { *; }
+-dontwarn com.mundo.**
+
+# ArkCheat specific
+-keep class com.bgmi.HeartbeatManager       { *; }
+-keep class com.bgmi.OverlayService         { *; }
+-keepclassmembers class com.bgmi.HeartbeatManager {
+    static native <methods>;
+    public static <methods>;
+}
+```
+
+**Why these 4 lines were needed:**
+
+| Added Rule | Why |
+|---|---|
+| `-keep class com.mundo.core.gms.**` | `FakeGmsServiceBroker`, `GmsBrokerProxy`, `FakeSignInService` extend `Binder`. Android's Binder JNI calls `onTransact()` via native reflection — R8 cannot see this reference and will strip/rename the override |
+| `-keep class com.mundo.proxy.gms.**` | `GmsSignInInterceptor` is dispatched via `@ProxyMethod` annotation hooks — reflective dispatch, invisible to R8 |
+| `-keep class com.mundo.fake.delegate.ServiceConnectionDelegate` | Invoked by `createProxy()` which is called reflectively by the BlackBox hook dispatcher |
+| `-dontwarn com.mundo.**` | Suppresses R8 warnings about internal cross-package references it can't fully resolve |
+
+---
+
+### Summary of All `proguard-rules.pro` Changes (Original → v3 → v6)
+
+| Build | Lines Added | Lines Removed | Net Effect |
+|---|---|---|---|
+| **Original** | (baseline) | — | Log.w/e stripped; no GMS keeps |
+| **v3** (`diag3`) | — | `Log.w(...)`, `Log.e(...)`, `Log.wtf(...)`, `Log.isLoggable(...)` from `-assumenosideeffects` | Diagnostic logs now survive R8 |
+| **v4, v5** | — | — | No proguard changes in these builds |
+| **v6** (`diag6`) | 4 lines: GMS keep rules | — | GMS Binder classes protected from R8 stripping |
+
+**Total changes across all builds:** 4 lines removed (v3), 4 lines added (v6) = 8 line net change from original to v6 final state.
+
+---
+
 ### Summary Table — All Version Fixes
 
 | Version | APK | File Changed | What Was Fixed | Before | After |
